@@ -1,0 +1,8 @@
+{
+    "sites": [
+    { "name":"gkgfu" , "url":"I don't have this yet" }, 
+    { "name":"google" , "url":"www.google.com" }, 
+    { "name":"微博" , "url":"www.weibo.com" },
+    { "name":"百度" , "url":"www.baidu.com"}
+    ]
+}
