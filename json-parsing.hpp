@@ -138,42 +138,42 @@ public:
         inString = false;
         bool atLast = false;
         bool atFirst = true;
-        for(char ch:json_text){
-            if(ch == ':'&&!inValue){
+        for(std::string::iterator ch = json_text.begin();ch!=json_text.end();ch++){
+            if(*ch == ':'&&!inValue){
                 inValue = true;
                 continue;
             }
-            else if(ch=='"'&&!inString){
+            else if(*ch=='"'&&!inString){
                 inString = true;
             }
-            else if(ch=='"'&&inString){//判断是否进入字符串模式
+            else if(*ch=='"'&&inString&&*(ch-1)!='\\'){//判断是否进入字符串模式
                 inString = false;
             }
             if(inValue){
-                if(ch=='{'||ch=='['){//这个是为了判断是否在一个对象或数组中
-                    pairBracket.push(ch);
+                if(*ch=='{'||*ch=='['){//这个是为了判断是否在一个对象或数组中
+                    pairBracket.push(*ch);
                 }
-                // else if(ch=='}'){
+                // else if(*ch=='}'){
                 //     std::cout<<"让我康康"<<std::endl;
                 // }
-                else if(!pairBracket.empty()&&((ch=='}'&&'{'==pairBracket.top())||(ch==']'&&'['==pairBracket.top()))){
+                else if(!pairBracket.empty()&&((*ch=='}'&&'{'==pairBracket.top())||(*ch==']'&&'['==pairBracket.top()))){
                     pairBracket.pop();
                 }
                 switch(this->type){//对不同的类型进行不同的操作
                     case OBJECT:
                     case ARRAY:
                         if(!pairBracket.empty()){
-                            this->value.push_back(ch);
+                            this->value.push_back(*ch);
                             atLast = true;
                         }
                         else if(pairBracket.empty()&&atLast){
-                            this->value.push_back(ch);
+                            this->value.push_back(*ch);
                             atLast = false;
                         }
                         break;
                     case INT:
                     case FLOAT:
-                        this->value.push_back(ch);
+                        this->value.push_back(*ch);
                         break;
                     case NULLTYPE:
                     case UNKNOW:
@@ -185,7 +185,7 @@ public:
                                 atFirst = false;
                                 continue;
                             }
-                            this->value.push_back(ch);
+                            this->value.push_back(*ch);
                             atLast = true;
                         }
                 }
@@ -197,6 +197,9 @@ public:
     }
     value_type getType(){
         return this->type;
+    }
+    std::string getKey(){
+        return this->key;
     }
 };
 
@@ -213,10 +216,10 @@ class json_array{
         char theLast;
         bool inString = false;
         for(std::string::iterator ch = array_text.begin();ch!=array_text.end();ch++){
-            if(*ch=='['&&begin==array_text.begin()){//找到开头的[
+            if(*ch=='['&&begin==array_text.begin()&&!inString){//找到开头的[
                 begin = ch;
             }
-            else if(*ch==']'&&end==array_text.end()){//找到结尾的]
+            else if(*ch==']'&&end==array_text.end()&&!inString){//找到结尾的]
                 end = ch;
             }
             // else if((*ch=='['&&ch!=begin)||*ch=='{'||(*ch=='"'&&inside==false)){
@@ -228,14 +231,14 @@ class json_array{
             // else if(*ch==','&&!inside){
             //     split.push_back(ch);
             // }
-            else if(*ch='{'||*ch=='['||*ch=='}'||*ch==']'){
+            else if(((*ch)=='{'||(*ch)=='['||(*ch)=='}'||(*ch)==']')&&!inString){
                 // inside.push(*ch);
                 theLast = *ch;
             }
             else if(*ch=='"'&&!inString){
                 inString = true;
             }
-            else if(*ch=='"'&&inString){
+            else if(*ch=='"'&&inString&&*(ch-1)!='\\'){
                 inString = false;
             }
             else if(*ch==','&&(theLast=='}'||theLast==']')&&!inString){
