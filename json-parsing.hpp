@@ -18,12 +18,16 @@ enum value_type{//json值的不同类型
         
 //     }
 // };
-class json_object;
-class json_array;//对这两个类的声明
+class json_property;
+class json_array;
+class json_object;//对这三个类的声明
+
 class value_object{//将value整合成一个类而不是字符串
 private:
     std::string value;
+    value_type type;
 public:
+    friend json_property;
     void push_back(char &ch){//为了兼容之前把value当作string的操作，提供一些接口
         this->value.push_back(ch);
     }
@@ -52,8 +56,9 @@ public:
             return false;
         }
     }
-    operator json_object();
-    operator json_array();//由于这两个类的声明在下面，因此只能先将这两个函数声明
+    operator json_property();
+    operator json_array();
+    operator json_object();//由于这三个类的声明在下面，因此只能先将这两个函数声明
 };
 class formatError{//格式错误异常
 public:
@@ -61,14 +66,14 @@ public:
         std::cerr<<"json文件格式错误"<<std::endl;
     }
 };
-class json_object{//json对象
+
+class json_property{//json属性
 private:
     std::string key;
     value_object value;
-    value_type type;
 public:
-    json_object(std::string json_text){
-        this->type = UNKNOW;
+    json_property(std::string json_text){
+        this->value.type = UNKNOW;
         std::stack<char> pairBracket;
         for(char ch:json_text){//判断括号是否成对
             if(ch=='{'||ch=='['||ch=='('){
@@ -83,53 +88,55 @@ public:
         }
         bool inString = false;//判断当前读到的字符是否在字符串内
         bool isKey = true;//如果是在字符串内，判断读到的是否是key值
-        for(char ch:json_text){
-            if(ch=='"'&&!inString){//如果读到引号并不在字符串里，开启字符串读取模式
+        for(std::string::iterator ch = json_text.begin();ch!=json_text.end();ch++){
+            if(*ch=='"'&&!inString){//如果读到引号并不在字符串里，开启字符串读取模式
                 inString = true;
             }
-            else if(ch=='"'&&inString){//如果读到引号并在字符串里，关闭读字符串模式
+            else if(*ch=='"'&&inString&&*(ch-1)!='\\'){//如果读到引号并在字符串里，关闭读字符串模式
                 inString = false;
             }
             else if(inString&&isKey){//如果在读字符串并在读key,将当前字符加入key的字符串
-                this->key.push_back(ch);
+                if(*ch=='\\'&&*(ch+1)=='"')
+                    continue;
+                this->key.push_back(*ch);
             }
-            else  if(ch==':'&&!inString){//如果读到冒号并不在字符串内，将isKey设为false
+            else  if(*ch==':'&&!inString){//如果读到冒号并不在字符串内，将isKey设为false
                 isKey = false;
             }
             else if(!isKey){
                 if(!inString){//如果不是key并不在字符串中
-                    if(ch>='0'&&ch<='9')
-                        this->type = INT;
-                    else if(ch=='.'){
-                        this->type = FLOAT;
+                    if(*ch>='0'&&*ch<='9')
+                        this->value.type = INT;
+                    else if(*ch=='.'){
+                        this->value.type = FLOAT;
                         break;
                     }
-                    else if(ch=='['){
-                        this->type = ARRAY;
+                    else if(*ch=='['){
+                        this->value.type = ARRAY;
                         break;
                     }
-                    else if(ch=='t'){
+                    else if(*ch=='t'){
                         this->value = "true";
-                        this->type = BOOLEAN;
+                        this->value.type = BOOLEAN;
                         break;
                     }
-                    else if(ch=='f'){
+                    else if(*ch=='f'){
                         this->value = "false";
-                        this->type = BOOLEAN;
+                        this->value.type = BOOLEAN;
                         break;
                     }
-                    else if(ch=='n'){
-                        this->type = NULLTYPE;
+                    else if(*ch=='n'){
+                        this->value.type = NULLTYPE;
                         this->value = "null";
                         break;
                     }
-                    else if(ch=='{'){
-                        this->type = OBJECT;
+                    else if(*ch=='{'){
+                        this->value.type = OBJECT;
                         break;
                     }
                 }
                 else{
-                    this->type = STRING;
+                    this->value.type = STRING;
                     break;
                 }
             }
@@ -139,7 +146,7 @@ public:
         bool atLast = false;
         bool atFirst = true;
         for(std::string::iterator ch = json_text.begin();ch!=json_text.end();ch++){
-            if(*ch == ':'&&!inValue){
+            if(*ch == ':'&&!inValue&&!inString){
                 inValue = true;
                 continue;
             }
@@ -159,7 +166,7 @@ public:
                 else if(!pairBracket.empty()&&((*ch=='}'&&'{'==pairBracket.top())||(*ch==']'&&'['==pairBracket.top()))){
                     pairBracket.pop();
                 }
-                switch(this->type){//对不同的类型进行不同的操作
+                switch(this->value.type){//对不同的类型进行不同的操作
                     case OBJECT:
                     case ARRAY:
                         if(!pairBracket.empty()){
@@ -192,47 +199,50 @@ public:
             }
         }
     }
-    value_object getValue(){
+    value_object getValueObject(){
         return this->value;
     }
     value_type getType(){
-        return this->type;
+        return this->value.type;
     }
     std::string getKey(){
         return this->key;
     }
 };
 
-//json数组
-class json_array{
+//json对象
+class json_object{
     private:
-    std::vector<json_object> array;
+    std::vector<json_property> object;
     public:
-    json_array(std::string array_text){
+    json_object(std::string object_text){
         std::stack<char> pairBracket;
-        std::string::iterator begin = array_text.begin(),end = array_text.end();//开头及结尾的[]
+        for(char ch:object_text){//判断括号是否成对
+            if(ch=='{'||ch=='['||ch=='('){
+                pairBracket.push(ch);
+            }
+            else if(ch=='}'||ch==']'||ch==')'){
+                pairBracket.pop();
+            }
+        }
+        if(!pairBracket.empty()){//如果括号不成对，抛出格式错误异常
+            throw formatError();
+        }
+        
+        std::string::iterator begin = object_text.begin(),end = object_text.end();//开头及结尾的{}
         std::vector<std::string::iterator>split;//分隔，即中间的逗号
         // std::stack<char> inside;
-        char theLast;
+        char theLast='}';
         bool inString = false;
-        for(std::string::iterator ch = array_text.begin();ch!=array_text.end();ch++){
-            if(*ch=='['&&begin==array_text.begin()&&!inString){//找到开头的[
+        for(std::string::iterator ch = object_text.begin();ch!=object_text.end();ch++){
+            if(*ch=='{'&&begin==object_text.begin()&&!inString){//找到开头的{
                 begin = ch;
             }
-            else if(*ch==']'&&end==array_text.end()&&!inString){//找到结尾的]
+            else if(*ch=='}'&&end==object_text.end()&&!inString){//找到结尾的}
                 end = ch;
             }
-            // else if((*ch=='['&&ch!=begin)||*ch=='{'||(*ch=='"'&&inside==false)){
-            //     inside = true;
-            // }
-            // else if(inside&&(*ch==']'||*ch=='{'||*ch=='"')){
-            //     inside = false;
-            // }
-            // else if(*ch==','&&!inside){
-            //     split.push_back(ch);
-            // }
             else if(((*ch)=='{'||(*ch)=='['||(*ch)=='}'||(*ch)==']')&&!inString){
-                // inside.push(*ch);
+                // pairBracket.push(*ch);
                 theLast = *ch;
             }
             else if(*ch=='"'&&!inString){
@@ -241,27 +251,94 @@ class json_array{
             else if(*ch=='"'&&inString&&*(ch-1)!='\\'){
                 inString = false;
             }
-            else if(*ch==','&&(theLast=='}'||theLast==']')&&!inString){
+            else if(*ch==','&&!inString&&(theLast=='}'||theLast==']')){
                 split.push_back(ch);
             }
         }
         // for(auto s:split){
         for(std::vector<std::string::iterator>::iterator s = split.begin();s!=split.end();s++){//分隔，然后丢到vector容器里
-            if(*s==split.at(0)){
-                this->array.push_back(json_object(std::string((begin+1),(*s+1))));
+            
+            if(s==split.begin()){//如果s指向了第一个逗号
+                this->object.push_back(json_property(std::string(begin+1,*s)));
             }
-            else if(*s==*(split.end()-1)){
-                this->array.push_back(json_object(std::string((*s+1),end)));
-            }
-            else{
-                this->array.push_back(json_object(std::string((*s+1),(*(s+1)+1))));
-            }
+            else if(s==split.end()-1){//如果s指向了最后一个逗号
+                this->object.push_back(json_property(std::string(*s,end)));
+                break;
+            } 
+            this->object.push_back(json_property(std::string(*s,*(s+1))));
         }
     }
-    std::vector<json_object> getArray(){
+    std::vector<json_property> getProperties(){
+        return this->object;
+    }
+};
+
+class json_array{
+private:
+    std::vector<value_object> array;
+public:
+    json_array(std::string array_text){
+        std::stack<char> pairBracket;
+        for(char ch:array_text){//判断括号是否成对
+            if(ch=='{'||ch=='['||ch=='('){
+                pairBracket.push(ch);
+            }
+            else if(ch=='}'||ch==']'||ch==')'){
+                pairBracket.pop();
+            }
+        }
+        if(!pairBracket.empty()){//如果括号不成对，抛出格式错误异常
+            throw formatError();
+        }
+        std::string::iterator begin,end;
+        bool inString = false;
+        char theLast;
+        std::vector<std::string::iterator> split;
+        for(std::string::iterator ch = array_text.begin();ch!=array_text.end();ch++){
+            if(*ch=='['&&begin==array_text.begin()&&!inString){//找到开头的[
+                begin = ch;
+            }
+            else if(*ch==']'&&end==array_text.end()&&!inString){//找到结尾的]
+                end = ch;
+            }
+            else if(*ch=='"'&&!inString){
+                inString = true;
+            }
+            else if(*ch=='"'&&inString&&*(ch-1)!='\\'){
+                inString = false;
+            }
+            else if(((*ch)=='{'||(*ch)=='['||(*ch)=='}'||(*ch)==']')&&!inString){
+                theLast = *ch;
+            }
+            else if(*ch==','&&!inString&&(theLast==']'||theLast=='}')){
+                split.push_back(ch);
+            }
+        }
+        for(std::vector<std::string::iterator>::iterator s = split.begin();s!=split.end();s++){//分隔，然后丢到vector容器里
+            
+            if(s==split.begin()){//如果s指向了第一个逗号
+                this->array.push_back(json_property(std::string(begin+1,*s)).getValueObject());
+            }
+            else if(s==split.end()-1){//如果s指向了最后一个逗号
+                this->array.push_back(json_property(std::string(*s,end)).getValueObject());
+                break;
+            } 
+            this->array.push_back(json_property(std::string(*s,*(s+1))).getValueObject());
+        }
+    }
+    std::vector<value_object> getArray(){
         return this->array;
     }
 };
+
+value_object::operator json_property(){
+    return json_property(this->value);
+}
+
 value_object::operator json_object(){
     return json_object(this->value);
+}
+
+value_object::operator json_array(){
+    return json_array(this->value);
 }
